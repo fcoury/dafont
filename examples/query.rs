@@ -1,4 +1,4 @@
-use rust_fontconfig::{FcFontCache, FcPattern, PatternMatch};
+use dafont::{FcFontCache, FcPattern, PatternMatch};
 
 fn main() {
     let cache = FcFontCache::build();
