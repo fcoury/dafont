@@ -754,3 +754,54 @@ fn FcParseFont(filepath: &PathBuf) -> Option<Vec<(FcPattern, FcFontPath)>> {
             .collect(),
     )
 }
+
+#[cfg(all(feature = "std", feature = "parsing"))]
+pub fn get_font_name(font_path: &FcFontPath) -> Option<(String, String)> {
+    use allsorts::{
+        binary::read::ReadScope,
+        font_data::FontData,
+        get_name::fontcode_get_name,
+        tables::{FontTableProvider, NameTable},
+        tag,
+    };
+
+    const FONT_SPECIFIER_NAME_ID: u16 = 4;
+    const FONT_SPECIFIER_FAMILY_ID: u16 = 1;
+
+    let font_bytes = std::fs::read(&font_path.path).ok()?;
+    let scope = ReadScope::new(&font_bytes[..]);
+    let font_file = scope.read::<FontData<'_>>().ok()?;
+    let provider = font_file.table_provider(font_path.font_index).ok()?;
+
+    let name_data = provider.table_data(tag::NAME).ok()??.into_owned();
+    let name_table = ReadScope::new(&name_data).read::<NameTable>().ok()?;
+
+    let mut font_family = None;
+    let mut font_name = None;
+
+    for name_record in name_table.name_records.iter() {
+        match name_record.name_id {
+            FONT_SPECIFIER_FAMILY_ID => {
+                if let Ok(Some(family)) = fontcode_get_name(&name_data, FONT_SPECIFIER_FAMILY_ID) {
+                    font_family = Some(String::from_utf8_lossy(family.as_bytes()).to_string());
+                }
+            }
+            FONT_SPECIFIER_NAME_ID => {
+                if let Ok(Some(name)) = fontcode_get_name(&name_data, FONT_SPECIFIER_NAME_ID) {
+                    font_name = Some(String::from_utf8_lossy(name.to_bytes()).to_string());
+                }
+            }
+            _ => continue,
+        }
+
+        if font_family.is_some() && font_name.is_some() {
+            break;
+        }
+    }
+
+    if let (Some(family), Some(name)) = (font_family, font_name) {
+        Some((family, name))
+    } else {
+        None
+    }
+}
